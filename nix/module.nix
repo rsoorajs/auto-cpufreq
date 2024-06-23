@@ -2,15 +2,18 @@ inputs: {
   config,
   lib,
   pkgs,
-  options,
   ...
 }:
-with lib; let
+let
   cfg = config.programs.auto-cpufreq;
   inherit (pkgs.stdenv.hostPlatform) system;
   defaultPackage = inputs.self.packages.${system}.default;
   cfgFilename = "auto-cpufreq.conf";
   cfgFile = format.generate cfgFilename cfg.settings;
+
+  inherit (lib) types;
+  inherit (lib.modules) mkIf mkForce;
+  inherit (lib.options) mkOption mkEnableOption;
 
   format = pkgs.formats.ini {};
 in {
@@ -18,7 +21,7 @@ in {
     enable = mkEnableOption "Automatic CPU speed & power optimizer for Linux";
 
     settings = mkOption {
-      description = mdDoc ''
+      description = ''
         Configuration for `auto-cpufreq`.
 
         See its [example configuration file] for supported settings.
@@ -31,15 +34,21 @@ in {
   };
 
   config = mkIf cfg.enable {
-    environment.systemPackages = [defaultPackage];
+    environment.systemPackages = [ defaultPackage ];
 
-    services.auto-cpufreq.enable = true;
-    systemd.services.auto-cpufreq = {
-      overrideStrategy = "asDropin";
-      serviceConfig.ExecStart = mkForce [
-        ""
-        "${defaultPackage}/bin/auto-cpufreq --daemon --config ${cfgFile}"
-      ];
+    systemd = {
+      packages =  [ defaultPackage ];
+      services.auto-cpufreq = {
+        wantedBy = [ "multi-user.target" ];
+        path = with pkgs; [ bash coreutils ];
+        overrideStrategy = "asDropin";
+
+        serviceConfig.WorkingDirectory = "";
+        serviceConfig.ExecStart = mkForce [
+          ""
+          "${defaultPackage}/bin/auto-cpufreq --daemon --config ${cfgFile}"
+        ];
+      };
     };
   };
 }
